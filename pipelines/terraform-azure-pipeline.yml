@@ -1,0 +1,40 @@
+trigger: none
+pr: none
+
+pool:
+  name: AgentVK
+
+variables:
+- group: terraform-secrets   # tumhare SP secrets
+
+steps:
+# ----- Azure login using Service Principal -----
+- script: |
+    az login --service-principal \
+      -u $(ARM_CLIENT_ID) \
+      -p $(ARM_CLIENT_SECRET) \
+      --tenant $(ARM_TENANT_ID)
+    az account set --subscription $(ARM_SUBSCRIPTION_ID)
+  displayName: Azure SP Login
+
+# ----- Terraform Installer -----
+- task: TerraformInstaller@1
+  displayName: Install Terraform
+  inputs:
+    terraformVersion: '1.6.6'
+
+# ----- Terraform Init -----
+- script: terraform init
+  displayName: Terraform Init
+
+# ----- Terraform Validate -----
+- script: terraform validate
+  displayName: Terraform Validate
+
+# ----- Terraform Plan -----
+- script: terraform plan -out=tfplan
+  displayName: Terraform Plan
+
+# ----- Terraform Apply -----
+- script: terraform apply -auto-approve tfplan
+  displayName: Terraform Apply
