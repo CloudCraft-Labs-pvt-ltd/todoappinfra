@@ -1,0 +1,95 @@
+trigger: none
+
+pool:
+  name: AgentVK
+
+variables:
+  config_path: '$(System.DefaultWorkingDirectory)'
+  backend_svc: 'vk-secret'
+
+jobs:
+
+# ================= INSTALL =================
+- job: Terraform_Install
+  displayName: "Terraform Install"
+  steps:
+  - task: TerraformInstaller@1
+    inputs:
+      terraformVersion: 'latest'
+
+# ================= INIT =================
+- job: Terraform_Init
+  displayName: "Terraform Init"
+  dependsOn: Terraform_Install
+  steps:
+  - task: TerraformTask@5
+    inputs:
+      provider: azurerm
+      command: init
+      workingDirectory: $(config_path)
+      backendServiceArm: $(backend_svc)
+      backendAzureRmResourceGroupName: rg-terraform-state
+      backendAzureRmStorageAccountName: stgformstate231023
+      backendAzureRmContainerName: tfstate
+      backendAzureRmKey: tfstate-file
+
+# ================= FMT =================
+- job: Terraform_Fmt
+  displayName: "Terraform Fmt"
+  dependsOn: Terraform_Init
+  steps:
+  - task: TerraformTask@5
+    inputs:
+      provider: azurerm
+      command: custom
+      customCommand: fmt
+      environmentServiceNameAzureRM: $(backend_svc)
+
+# ================= VALIDATE =================
+- job: Terraform_Validate
+  displayName: "Terraform Validate"
+  dependsOn: Terraform_Fmt
+  steps:
+  - task: TerraformTask@5
+    inputs:
+      provider: azurerm
+      command: validate
+      workingDirectory: $(config_path)
+
+# ================= PLAN =================
+- job: Terraform_Plan
+  displayName: "Terraform Plan"
+  dependsOn: Terraform_Validate
+  steps:
+  - task: TerraformTask@5
+    inputs:
+      provider: azurerm
+      command: plan
+      workingDirectory: $(config_path)
+      environmentServiceNameAzureRM: $(backend_svc)
+
+# ================= MANUAL APPROVAL =================
+- job: Manual_Validation
+  displayName: "Manual Approval Before Apply"
+  dependsOn: Terraform_Plan
+  pool: server
+  steps:
+  - task: ManualValidation@0
+    inputs:
+      instructions: |
+        Review Terraform plan output.
+        Approve to proceed with Terraform Apply.
+      onTimeout: reject
+      timeoutInMinutes: 1440
+
+# ================= APPLY =================
+- job: Terraform_Apply
+  displayName: "Terraform Apply"
+  dependsOn: Manual_Validation
+  steps:
+  - task: TerraformTask@5
+    inputs:
+      provider: azurerm
+      command: apply
+      workingDirectory: $(config_path)
+      environmentServiceNameAzureRM: $(backend_svc)
